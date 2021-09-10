@@ -9,6 +9,7 @@
 #include "SearchTask.h"
 #include <iostream>
 #include <stdlib.h>
+#include <stdio.h>
 #include <vector>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -48,6 +49,22 @@ bool ProcessArguments(vector<SearchTask> &tasks, const char* argv[], const int a
  * Returns :     true if no errors happened during the whole procedure
  */
 bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecursive);
+
+/*
+ * Name:			PrintStat
+ * Description :	Prints out the contents of a stat struct in a formatted manner.
+ * Parameters :		The struct stat to print
+ * Note :			Private function, to remove when done with development.
+ */
+void PrintStat(const struct stat & fileStat);
+
+/*
+ * Name :			GetFileStat()
+ * Description : 	Retrieves information about a file in a stat struct.
+ * Parameters :		The absolute path to the file (e.g. c/Users/Grant/test.txt).
+ * Returns :		Pointer to struct stat containing the file's information.
+ */
+struct stat * GetFileStat(const string & absoluteFileName);
 
 /*
  * Name :        main()
@@ -133,64 +150,111 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 	// the boolean value that will be returned
 	bool flag = true;
 
-	// open the directory corresponding to the searchPath
+	vector<string> fileNames;
 
-	// todo
+	DIR * directory;
+	struct dirent * file;	// Pointer to represent each file in the directory
 
-	// read the directory
+	// Read through the directory indicated by the search path
+	if ((directory = opendir(searchPath.c_str())) != NULL) 
+	{
+		// Iterate through all the files in the directory
+		while ((file = readdir(directory)) != NULL) 
+		{
+			string fileName = string(file->d_name);
+			if (fileName != "." && fileName != "..")
+			{
+				fileNames.push_back(fileName);
+			}
 
-	// todo
+			/*
+			string absoluteFileName = searchPath + "/" + string(file->d_name);
+
+			// Retrieve information about the file, store it into result
+			struct stat result;
+			if (stat(absoluteFileName.c_str(), &result) == 0)
+			{
+				cout << absoluteFileName << endl;
+				PrintStat(result);
+			}
+			
+			cout << endl;
+			*/
+		}
+	}
+
+	closedir(directory);
 
 	// for each entry of the directory
 	// we check if the current entry
 	// satisfies any of our search tasks
-	for(unsigned int i = 0; i<tasks.size();i++)
-	{
-		SearchTask::TaskType currentType = tasks[i].GetType();
-		SearchTask currentTask = tasks[i];
 
-		switch(currentType)
+	for (const auto & fileName : fileNames)
+	{
+		// Retrieve the file's information
+		const struct stat * fileInfo = GetFileStat(searchPath + "/" + fileName);
+		if (fileInfo == nullptr)
 		{
-		// If the current task is of type Name
-		case SearchTask::Name:
-			//Replace this with your own code
-			cout<<currentTask.GetStringTarget()<<endl;
-			break;
-		// If the current task is of type Size
-		case SearchTask::Size:
-			//Replace this with your own code
-			cout<<currentTask.GetLongTarget()<<endl;
-			break;
-		// If the current task is of type Uid
-		case SearchTask::Uid:
-			//Replace this with your own code
-			cout<<currentTask.GetIntTarget()<<endl;
-			break;
-		// If the current task is of type Gid
-		case SearchTask::Gid:
-			//Replace this with your own code
-			cout<<currentTask.GetIntTarget()<<endl;
-			break;
-		// If the current task is of type Atime
-		case SearchTask::Atime:
-			//Replace this with your own code
-			cout<<currentTask.GetStringTarget()<<endl;
-			break;
-		// If the current task is of type Mtime
-		case SearchTask::Mtime:
-			//Replace this with your own code
-			cout<<currentTask.GetStringTarget()<<endl;
-			break;
-		// If the current task is of type Ctime
-		case SearchTask::Ctime:
-			//Replace this with your own code
-			cout<<currentTask.GetStringTarget()<<endl;
-			break;
-		// If the current task is of type Perm
-		case SearchTask::Perm:
-			//Replace this with your own code
-			cout<<currentTask.GetIntTarget()<<endl;
-			break;
+			// If the file's info could not be found, move onto the next file in the list.
+			continue;
+		}
+
+		for (unsigned int i = 0; i < tasks.size(); i++)
+		{
+			SearchTask::TaskType currentType = tasks[i].GetType();
+			SearchTask currentTask = tasks[i];
+
+			switch(currentType)
+			{
+			// If the current task is of type Name
+			case SearchTask::Name:
+				if (fileName == currentTask.GetStringTarget())
+				{
+					cout << fileName << endl;
+				}
+				break;
+			// If the current task is of type Size
+			case SearchTask::Size:
+				if (fileInfo->st_size == currentTask.GetLongTarget())
+				{
+					cout << fileName << endl;
+				}
+				break;
+			// If the current task is of type Uid
+			case SearchTask::Uid:
+				if (fileInfo->st_uid == currentTask.GetIntTarget())
+				{
+					cout << fileName << endl;
+				}
+				break;
+			// If the current task is of type Gid
+			case SearchTask::Gid:
+				if (fileInfo->st_gid == currentTask.GetIntTarget())
+				{
+					cout << fileName << endl;
+				}
+				break;
+			// If the current task is of type Atime
+			case SearchTask::Atime:
+				//Replace this with your own code
+				cout<<currentTask.GetStringTarget()<<endl;
+				break;
+			// If the current task is of type Mtime
+			case SearchTask::Mtime:
+				//Replace this with your own code
+				cout<<currentTask.GetStringTarget()<<endl;
+				break;
+			// If the current task is of type Ctime
+			case SearchTask::Ctime:
+				//Replace this with your own code
+				cout<<currentTask.GetStringTarget()<<endl;
+				break;
+			// If the current task is of type Perm
+			case SearchTask::Perm:
+				//Replace this with your own code
+				cout<<currentTask.GetIntTarget()<<endl;
+				break;
+			}
 		}
 	}
 
@@ -202,4 +266,42 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 	}
 
 	return flag;
+}
+
+void PrintStat(const struct stat & fileStat)
+{
+	cout << "st_dev: " << fileStat.st_dev << endl;
+	cout << "st_ino: " << fileStat.st_ino << endl;
+	cout << "st_mode: " << fileStat.st_mode << endl;
+	cout << "st_nlink: " << fileStat.st_nlink << endl;
+	cout << "st_uid: " << fileStat.st_uid << endl;
+	cout << "st_gid: " << fileStat.st_gid << endl;
+	cout << "st_rdev: " << fileStat.st_rdev << endl;
+	cout << "st_size: " << fileStat.st_size << endl;
+	cout << "st_blksize: " << fileStat.st_blksize << endl;
+	cout << "st_blocks: " << fileStat.st_blocks << endl;
+	cout << "st_atime: " << fileStat.st_atim.tv_sec << endl;
+	cout << "st_mtime: " << fileStat.st_mtim.tv_sec << endl;
+	cout << "st_ctime: " << fileStat.st_ctim.tv_sec << endl;
+	if (fileStat.st_mode & S_IRUSR)
+	{
+		cout << "read ";
+	}
+	if (fileStat.st_mode & S_IWUSR)
+	{
+		cout << "write ";
+	}
+	if (fileStat.st_mode & S_IXUSR)
+	{
+		cout << "execute ";
+	}
+	cout << endl;
+
+	// S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH, S_IRWXU -> Macros for checking group permissions and all users permissions
+}
+
+struct stat * GetFileStat(const string & absoluteFileName)
+{
+	struct stat fileInfo;
+	return (stat(absoluteFileName.c_str(), &fileInfo) == 0) ? &fileInfo : nullptr;
 }
