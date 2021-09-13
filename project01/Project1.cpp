@@ -59,12 +59,14 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 void PrintStat(const struct stat & fileStat);
 
 /*
- * Name :			GetFileStat()
- * Description : 	Retrieves information about a file in a stat struct.
- * Parameters :		The absolute path to the file (e.g. c/Users/Grant/test.txt).
- * Returns :		Pointer to struct stat containing the file's information.
+ * Name :			IsCorrectFilePermissions()
+ * Description :	This function determines if a file's permissions, retrieved from struct stat.st_mode,
+ * 					matches the targeted permissions.
+ * Parameters :		filePermissions - the file to check's permissions, retrieved from struct stat.st_mode.
+ * 					targetPermissions - the permissions to compare against, passed as an integer (e.g. 755)
+ * Returns :		true if the filePermissions match the targetPermissions.
  */
-struct stat * GetFileStat(const string & absoluteFileName);
+bool IsCorrectFilePermissions(const mode_t filePermissions, const int targetPermissions);
 
 /*
  * Name :        main()
@@ -171,11 +173,11 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 			string absoluteFileName = searchPath + "/" + string(file->d_name);
 
 			// Retrieve information about the file, store it into result
-			struct stat result;
-			if (stat(absoluteFileName.c_str(), &result) == 0)
+			struct stat fileInfo;
+			if (stat(absoluteFileName.c_str(), &fileInfo) == 0)
 			{
 				cout << absoluteFileName << endl;
-				PrintStat(result);
+				PrintStat(fileInfo);
 			}
 			
 			cout << endl;
@@ -191,13 +193,19 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 
 	for (const auto & fileName : fileNames)
 	{
-		// Retrieve the file's information
-		const struct stat * fileInfo = GetFileStat(searchPath + "/" + fileName);
-		if (fileInfo == nullptr)
+		// Retrieve the file information for the fileName. If retrieving the info fails, move onto the next file name.
+		string absoluteFileName = searchPath + "/" + fileName;
+		struct stat fileInfo;
+		if (stat(absoluteFileName.c_str(), &fileInfo) != 0)
 		{
-			// If the file's info could not be found, move onto the next file in the list.
 			continue;
 		}
+
+		/*
+		cout << fileName << endl;
+		PrintStat(fileInfo);
+		cout << endl;
+		*/
 
 		for (unsigned int i = 0; i < tasks.size(); i++)
 		{
@@ -215,21 +223,21 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 				break;
 			// If the current task is of type Size
 			case SearchTask::Size:
-				if (fileInfo->st_size == currentTask.GetLongTarget())
+				if (fileInfo.st_size == currentTask.GetLongTarget())
 				{
 					cout << fileName << endl;
 				}
 				break;
 			// If the current task is of type Uid
 			case SearchTask::Uid:
-				if (fileInfo->st_uid == currentTask.GetIntTarget())
+				if (fileInfo.st_uid == currentTask.GetIntTarget())
 				{
 					cout << fileName << endl;
 				}
 				break;
 			// If the current task is of type Gid
 			case SearchTask::Gid:
-				if (fileInfo->st_gid == currentTask.GetIntTarget())
+				if (fileInfo.st_gid == currentTask.GetIntTarget())
 				{
 					cout << fileName << endl;
 				}
@@ -252,7 +260,11 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 			// If the current task is of type Perm
 			case SearchTask::Perm:
 				//Replace this with your own code
-				cout<<currentTask.GetIntTarget()<<endl;
+				// cout<<currentTask.GetIntTarget()<<endl;
+				if (IsCorrectFilePermissions(fileInfo.st_mode, currentTask.GetIntTarget()))
+				{
+					cout << fileName << endl;
+				}
 				break;
 			}
 		}
@@ -300,8 +312,35 @@ void PrintStat(const struct stat & fileStat)
 	// S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH, S_IRWXU -> Macros for checking group permissions and all users permissions
 }
 
-struct stat * GetFileStat(const string & absoluteFileName)
+bool IsCorrectFilePermissions(const mode_t filePermissions, const int targetPermissions)
 {
-	struct stat fileInfo;
-	return (stat(absoluteFileName.c_str(), &fileInfo) == 0) ? &fileInfo : nullptr;
+	/*
+	 * In the parameter filePermissions, the first 9 bits of the integer indicate the bits for file permissions.
+	 * A file with permissions 755 would have the first 9 bits of the number:
+	 * 		...1 1110 1101
+	 * 		...r wxr- xr-x
+	 * 
+	 * The bits beyond the first 9 are irrelevant for this function.
+	 */
+
+	// First, separate the user, group, and all permissions from targetPermissions
+
+	int userPermissions = targetPermissions / 100;
+	int groupPermissions = (targetPermissions % 100) / 10;
+	int allPermissions = (targetPermissions % 100) % 10;
+
+	// Shift the bits to the left to their appropriate positions.
+	userPermissions = userPermissions << 6;
+	groupPermissions = groupPermissions << 3;
+	
+	// Bitwise OR the three permission groups to get the integer with the appropriate bits marked for user, group, and other read, write, execute
+	int totalPermissions = userPermissions | groupPermissions;
+	totalPermissions = totalPermissions | allPermissions;
+
+	// To isolate the first 9 bits of filePermissions, create a mask and bitwise AND filePermissions with the mask.
+	unsigned int mask = 0x1ff;
+	int _filePermissions = filePermissions & mask;
+
+	// If the two are equal, then the file has the same permissions that we are looking for.
+	return _filePermissions == totalPermissions;
 }
