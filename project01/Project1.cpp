@@ -69,6 +69,16 @@ void PrintStat(const struct stat & fileStat);
 bool IsCorrectFilePermissions(const mode_t filePermissions, const int targetPermissions);
 
 /*
+ * Name :			IsMatchingTime()
+ * Description :	This function determine's if a file's access, modify, or last status change time, 
+ * 					given in time_t, matches a target time, given as a string in the format %T-%D (HH:MM:SS-MM/DD/YY)
+ * Parameters :		fileTime - the time the file was last accessed.
+ * 					targetTime - the time to match against the fileTime.
+ * Returns :		true if the fileTime matches the targetTime.
+ */
+bool IsMatchingTime(const time_t & fileTime, const string & targetTime);
+
+/*
  * Name :        main()
  * Description : the main function of the program. Its main purpose is to
  *	 	 	 	 process the argument list and then call the search function
@@ -168,20 +178,6 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 			{
 				fileNames.push_back(fileName);
 			}
-
-			/*
-			string absoluteFileName = searchPath + "/" + string(file->d_name);
-
-			// Retrieve information about the file, store it into result
-			struct stat fileInfo;
-			if (stat(absoluteFileName.c_str(), &fileInfo) == 0)
-			{
-				cout << absoluteFileName << endl;
-				PrintStat(fileInfo);
-			}
-			
-			cout << endl;
-			*/
 		}
 	}
 
@@ -201,72 +197,90 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 			continue;
 		}
 
-		/*
-		cout << fileName << endl;
-		PrintStat(fileInfo);
-		cout << endl;
-		*/
+		// If the file matches multiple targets, it only needs to be printed once.
+		bool printed = false;
 
 		for (unsigned int i = 0; i < tasks.size(); i++)
 		{
-			SearchTask::TaskType currentType = tasks[i].GetType();
-			SearchTask currentTask = tasks[i];
-
-			switch(currentType)
+			// If the file has already been printed, no need to search through the rest of the tasks
+			if (printed)
 			{
-			// If the current task is of type Name
-			case SearchTask::Name:
-				if (fileName == currentTask.GetStringTarget())
-				{
-					cout << fileName << endl;
-				}
-				break;
-			// If the current task is of type Size
-			case SearchTask::Size:
-				if (fileInfo.st_size == currentTask.GetLongTarget())
-				{
-					cout << fileName << endl;
-				}
-				break;
-			// If the current task is of type Uid
-			case SearchTask::Uid:
-				if (fileInfo.st_uid == currentTask.GetIntTarget())
-				{
-					cout << fileName << endl;
-				}
-				break;
-			// If the current task is of type Gid
-			case SearchTask::Gid:
-				if (fileInfo.st_gid == currentTask.GetIntTarget())
-				{
-					cout << fileName << endl;
-				}
-				break;
-			// If the current task is of type Atime
-			case SearchTask::Atime:
-				//Replace this with your own code
-				cout<<currentTask.GetStringTarget()<<endl;
-				break;
-			// If the current task is of type Mtime
-			case SearchTask::Mtime:
-				//Replace this with your own code
-				cout<<currentTask.GetStringTarget()<<endl;
-				break;
-			// If the current task is of type Ctime
-			case SearchTask::Ctime:
-				//Replace this with your own code
-				cout<<currentTask.GetStringTarget()<<endl;
-				break;
-			// If the current task is of type Perm
-			case SearchTask::Perm:
-				//Replace this with your own code
-				// cout<<currentTask.GetIntTarget()<<endl;
-				if (IsCorrectFilePermissions(fileInfo.st_mode, currentTask.GetIntTarget()))
-				{
-					cout << fileName << endl;
-				}
 				break;
 			}
+			else
+			{
+				SearchTask::TaskType currentType = tasks[i].GetType();
+				SearchTask currentTask = tasks[i];
+
+				switch(currentType)
+				{
+				// If the current task is of type Name
+				case SearchTask::Name:
+					if (fileName == currentTask.GetStringTarget())
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Size
+				case SearchTask::Size:
+					if (fileInfo.st_size == currentTask.GetLongTarget())
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Uid
+				case SearchTask::Uid:
+					if (fileInfo.st_uid == currentTask.GetIntTarget())
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Gid
+				case SearchTask::Gid:
+					if (fileInfo.st_gid == currentTask.GetIntTarget())
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Atime
+				case SearchTask::Atime:
+					if (IsMatchingTime(fileInfo.st_atim.tv_sec, currentTask.GetStringTarget()))
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Mtime
+				case SearchTask::Mtime:
+					if (IsMatchingTime(fileInfo.st_mtim.tv_sec, currentTask.GetStringTarget()))
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Ctime
+				case SearchTask::Ctime:
+					if (IsMatchingTime(fileInfo.st_ctim.tv_sec, currentTask.GetStringTarget()))
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				// If the current task is of type Perm
+				case SearchTask::Perm:
+					if (IsCorrectFilePermissions(fileInfo.st_mode, currentTask.GetIntTarget()))
+					{
+						cout << absoluteFileName << endl;
+						printed = true;
+					}
+					break;
+				}
+			}
+			
 		}
 	}
 
@@ -343,4 +357,14 @@ bool IsCorrectFilePermissions(const mode_t filePermissions, const int targetPerm
 
 	// If the two are equal, then the file has the same permissions that we are looking for.
 	return _filePermissions == totalPermissions;
+}
+
+bool IsMatchingTime(const time_t & fileTime, const string & targetTime)
+{
+	struct tm timeDate;
+	strptime(targetTime.c_str(), "%T-%D", &timeDate);
+	
+	time_t compareTime = mktime(&timeDate);
+	
+	return compareTime == fileTime;
 }
