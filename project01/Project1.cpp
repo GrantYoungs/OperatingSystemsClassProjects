@@ -51,14 +51,6 @@ bool ProcessArguments(vector<SearchTask> &tasks, const char* argv[], const int a
 bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecursive);
 
 /*
- * Name:			PrintStat
- * Description :	Prints out the contents of a stat struct in a formatted manner.
- * Parameters :		The struct stat to print
- * Note :			Private function, to remove when done with development.
- */
-void PrintStat(const struct stat & fileStat);
-
-/*
  * Name :			IsCorrectFilePermissions()
  * Description :	This function determines if a file's permissions, retrieved from struct stat.st_mode,
  * 					matches the targeted permissions.
@@ -163,6 +155,7 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 	bool flag = true;
 
 	vector<string> fileNames;
+	vector<string> directoryNames;
 
 	DIR * directory;
 	struct dirent * file;	// Pointer to represent each file in the directory
@@ -173,24 +166,31 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 		// Iterate through all the files in the directory
 		while ((file = readdir(directory)) != NULL) 
 		{
-			string fileName = string(file->d_name);
-			if (fileName != "." && fileName != "..")
+			string name = string(file->d_name);
+
+			// If the file is a regular file
+			if (file->d_type == DT_REG)
 			{
-				fileNames.push_back(fileName);
+				fileNames.push_back(name);
+			}
+
+			// If the file is a directory
+			else if (file->d_type == DT_DIR
+					&& name != "."
+					&& name != "..")
+			{
+				directoryNames.push_back(name);
 			}
 		}
 	}
-
 	closedir(directory);
-
-	// for each entry of the directory
-	// we check if the current entry
-	// satisfies any of our search tasks
 
 	for (const auto & fileName : fileNames)
 	{
-		// Retrieve the file information for the fileName. If retrieving the info fails, move onto the next file name.
-		string absoluteFileName = searchPath + "/" + fileName;
+		string absoluteFileName = searchPath[searchPath.size() - 1] == '/' ?
+					searchPath + fileName : searchPath + "/" + fileName;
+		
+		// Retrieve the file info. If stat() returns anything other than 0, it failed to get that file's info. Move on to the next file.
 		struct stat fileInfo;
 		if (stat(absoluteFileName.c_str(), &fileInfo) != 0)
 		{
@@ -203,11 +203,7 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 		for (unsigned int i = 0; i < tasks.size(); i++)
 		{
 			// If the file has already been printed, no need to search through the rest of the tasks
-			if (printed)
-			{
-				break;
-			}
-			else
+			if (!printed)
 			{
 				SearchTask::TaskType currentType = tasks[i].GetType();
 				SearchTask currentTask = tasks[i];
@@ -280,7 +276,10 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 					break;
 				}
 			}
-			
+			else
+			{
+				break;
+			}
 		}
 	}
 
@@ -288,42 +287,16 @@ bool Find(vector<SearchTask> &tasks, const string &searchPath, const bool isRecu
 	// find the target recursively
 	if(isRecursive)
 	{
-		// todo
+		for (const auto & directoryName : directoryNames)
+		{
+			string _searchPath = searchPath[searchPath.size() - 1] == '/' ?
+					searchPath + directoryName : searchPath + "/" + directoryName;
+
+			flag = Find(tasks, _searchPath, isRecursive);
+		}
 	}
 
 	return flag;
-}
-
-void PrintStat(const struct stat & fileStat)
-{
-	cout << "st_dev: " << fileStat.st_dev << endl;
-	cout << "st_ino: " << fileStat.st_ino << endl;
-	cout << "st_mode: " << fileStat.st_mode << endl;
-	cout << "st_nlink: " << fileStat.st_nlink << endl;
-	cout << "st_uid: " << fileStat.st_uid << endl;
-	cout << "st_gid: " << fileStat.st_gid << endl;
-	cout << "st_rdev: " << fileStat.st_rdev << endl;
-	cout << "st_size: " << fileStat.st_size << endl;
-	cout << "st_blksize: " << fileStat.st_blksize << endl;
-	cout << "st_blocks: " << fileStat.st_blocks << endl;
-	cout << "st_atime: " << fileStat.st_atim.tv_sec << endl;
-	cout << "st_mtime: " << fileStat.st_mtim.tv_sec << endl;
-	cout << "st_ctime: " << fileStat.st_ctim.tv_sec << endl;
-	if (fileStat.st_mode & S_IRUSR)
-	{
-		cout << "read ";
-	}
-	if (fileStat.st_mode & S_IWUSR)
-	{
-		cout << "write ";
-	}
-	if (fileStat.st_mode & S_IXUSR)
-	{
-		cout << "execute ";
-	}
-	cout << endl;
-
-	// S_IRGRP, S_IWGRP, S_IROTH, S_IWOTH, S_IRWXU -> Macros for checking group permissions and all users permissions
 }
 
 bool IsCorrectFilePermissions(const mode_t filePermissions, const int targetPermissions)
@@ -338,7 +311,6 @@ bool IsCorrectFilePermissions(const mode_t filePermissions, const int targetPerm
 	 */
 
 	// First, separate the user, group, and all permissions from targetPermissions
-
 	int userPermissions = targetPermissions / 100;
 	int groupPermissions = (targetPermissions % 100) / 10;
 	int allPermissions = (targetPermissions % 100) % 10;
@@ -363,7 +335,6 @@ bool IsMatchingTime(const time_t & fileTime, const string & targetTime)
 {
 	struct tm timeDate;
 	strptime(targetTime.c_str(), "%T-%D", &timeDate);
-	
 	time_t compareTime = mktime(&timeDate);
 	
 	return compareTime == fileTime;
