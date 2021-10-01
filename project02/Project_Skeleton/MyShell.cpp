@@ -18,6 +18,8 @@
 #include <iostream>
 #include <errno.h>
 #include <unistd.h>
+#include <limits.h>
+#include <pwd.h>
 
 using namespace std;
 
@@ -91,7 +93,7 @@ void MyShell::Prompt()
 		//====================================================================
 		// to do (replace the following line with your own code)
 		//
-		cout<<"Update the history of command line input"<<endl;
+		UpdateHistory(currentCMD);
 
 
 
@@ -134,7 +136,7 @@ void MyShell::PrintPromptInfo()
 	//
 	// to do (replace the following line with your own code)
 	//
-	cout<<"<PrintPromptInfo()>";
+	cout << "<" << mSequenceNumber << " " << GetHostName() << ":" << GetUserName() << ">";
 }
 
 /*
@@ -149,7 +151,13 @@ void MyShell::PrintHistory()
 	//
 	// to do (replace the following line with your own code)
 	//
-	cout<<"Please implement MyShell::PrintHistory()"<<endl;
+	int i = mHistory.size();
+	for (const auto & hist : mHistory)
+	{
+		int index = mHistoryCounter - i;
+		cout << index << " " << hist << endl;
+		i--;
+	}
 }
 
 /*
@@ -164,7 +172,14 @@ void MyShell::UpdateHistory(const std::string & h)
 	//
 	// to do (replace the following line with your own code)
 	//
-	cout<<"You have to implement MyShell::UpdateHistory()"<<endl;
+	if (mHistory.size() >= HistorySize)
+	{
+		mHistory.pop_front();
+	}
+
+	mHistory.push_back(h);
+	mSequenceNumber++;
+	mHistoryCounter++;
 }
 
 /*
@@ -236,10 +251,15 @@ void MyShell::ExecuteExternalCommand(MyShellParser *parser)
  */
 std::string MyShell::GetUserName()
 {
-	//
-	// to do (replace the following line with your own code)
-	//
-	return "MyShell::GetUserName()";
+	struct passwd *pwd = getpwuid(getuid());
+	if (pwd)
+	{
+		return string(pwd->pw_name);
+	}
+	else
+	{
+		return "unknown";
+	}
 }
 
 /*
@@ -254,7 +274,9 @@ std::string MyShell::GetHostName()
 	//
 	// to do (replace the following line with your own code)
 	//
-	return "MyShell::GetHostName()";
+	char host_name[HOST_NAME_MAX];
+	gethostname(host_name, HOST_NAME_MAX);
+	return string(host_name);
 }
 
 /*
