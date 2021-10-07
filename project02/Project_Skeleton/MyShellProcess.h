@@ -39,6 +39,11 @@ private:
 	void ExecuteInBackground(MyShellParser* parser);
 	void ExecuteInForeground(MyShellParser* parser);
 
+	// execute pipelined commands, I/O commands, or combination commands
+	void ExecutePipelinedCommands(MyShellParser* parser);
+	void ExecuteIOCommands(MyShellParser* parser);
+	void ExecuteCombinedCommands(MyShellParser* parser);
+
 	// for cooperating with MyShell object
 	MyShell *mShell;
 };

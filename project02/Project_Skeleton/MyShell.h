@@ -78,10 +78,10 @@ private:
 	bool mIsQuit;
 
 	// storing the command line history
-	std::list<std::string>mHistory;
+	std::list<std::pair<int, std::string>> mHistory;
 
 	// the sequence number for commands stored in the history
-	int mHistoryCounter;
+	// int mHistoryCounter;
 };
 
 #endif /* MYSHELL_H_ */

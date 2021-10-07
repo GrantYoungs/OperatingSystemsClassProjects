@@ -139,7 +139,49 @@ void MyShellProcess::ExecuteInBackground(MyShellParser *parser)
 	//
 	// to do (replace the following line with your own code)
 	//
-	cout<<"Please implement MyShellProcess::ExecuteInBackground()"<<endl;
+	// cout << "Please implement MyShellProcess::ExecuteInBackground()" << endl;
+
+	/*
+	int delimiterCount = parser->GetDelimiterCount();
+
+	// No delimiters means only one command needs to be executed.
+	if (delimiterCount == 0)
+	{
+		pid_t pID;
+		char** argv = parser->GetArguments(0);
+
+		switch (pID = fork())
+		{
+			case -1:
+				cout << "fork() error" << endl;
+				break;
+			case 0:
+				// Child process
+				execv(argv[0], argv);
+				break;
+			default:
+				// Do not wait for the child process to finish, as that is supposed
+				// to run in the background.
+				break;
+		}
+	}
+	*/
+
+	pid_t pID;
+
+	if ((pID = fork()) < 0)
+	{
+		cout << "for() error" << endl;
+	}
+	else if (pID == 0)
+	{
+		// Inside the child process
+		Execute(parser);
+		exit(EXIT_FAILURE);
+	}
+
+	// Because this command is meant to be ran in the background,
+	// the parent process does not have to wait for the child process to finish.
 }
 
 /*
@@ -195,12 +237,164 @@ void MyShellProcess::Execute(MyShellParser *parser)
 	// given the parser containing all the
 	// commands and delimiters you need for
 	// doing all kinds of execution as follows
-	// 	execute the command w/o IO redirection nor pipes
+	// 	execute the command without IO redirection nor pipes
 	// 	execute the command w/ pipe
 	// 	execute the command w/ IO redirection
 
-	//
-	// to do (replace the following line with your own code)
-	//
-	cout<<"Please implement MyShellProcess::Execute()"<<endl;
+	int delimiterCount = parser->GetDelimiterCount();
+	
+	// If there are no delimiters ( |, <, > ), then simply execute the command
+	if (delimiterCount == 0)
+	{
+		// If there are no delimiters, then there will only be one set of arguments,
+		// retrievable at the index 0
+		char** argv = parser->GetArguments(0);
+		execv(argv[0], argv);
+	}
+
+	// Otherwise, we're going to have to work with some delimiters.
+	else
+	{
+		/*
+		for (int i = 0; i < parser->GetCommandCount(); i++)
+		{
+			char ** argv = parser->GetArguments(i);
+
+			cout << "Command index " << i << " ";
+			for (char * arg = *argv; arg; arg = *++argv)
+			{
+				cout << arg << " ";
+			}
+			cout << endl;
+		}
+		*/
+
+		// First thing we need to do is determine if the command list is only pipelined,
+		// only I/O, or a combination of both.
+		bool pipeline = false;
+		bool io = false;
+
+		for (int i = 0; i < delimiterCount; i++)
+		{
+			// cout << "Delimiter index " << i << " " << parser->GetDelimiter(i) << endl;
+			
+			if (parser->GetDelimiter(i) == MyShellParser::Pipe)
+			{
+				pipeline = true;
+			}
+
+			if (parser->GetDelimiter(i) == MyShellParser::RedirStdin
+				|| parser->GetDelimiter(i) == MyShellParser::RedirStdout)
+			{
+				io = true;
+			}
+		}
+
+		if (pipeline && io)
+		{
+			ExecuteCombinedCommands(parser);
+		}
+		else if (pipeline)
+		{
+			ExecutePipelinedCommands(parser);
+		}
+		else if (io)
+		{
+			ExecuteIOCommands(parser);
+		}
+	}
+}
+
+/*
+ * Name :        MyShellProcess::ExecutePipelinedCommands()
+ * Description : execute a command that only has pipelines
+ * Parameters :  a pointer to MyShellParser for retrieving the
+ * 				 pre-processed commands
+ * Returns :     void
+ */
+void MyShellProcess::ExecutePipelinedCommands(MyShellParser* parser)
+{
+	int tmpin = dup(0);
+	int tmpout = dup(1);
+
+	int fdin = dup(tmpin);
+
+	pid_t pID;
+	int fdout;
+
+	for (int i = 0; i < parser->GetCommandCount(); i++)
+	{
+		// Redirect input
+		dup2(fdin, 0);
+		close(fdin);
+
+		char** argv = parser->GetArguments(i);
+
+		// If we're on the last command
+		if (i == parser->GetCommandCount() - 1)
+		{
+			// Use the default output
+			fdout = dup(tmpout);
+		}
+		else
+		{
+			// Not the last command, keep piping
+			int fdpipe[2];
+			pipe(fdpipe);
+			fdout = fdpipe[1];
+			fdin = fdpipe[0];
+		}
+
+		// Redirect output
+		dup2(fdout, 1);
+		close(fdout);
+
+		// Create the child process
+		if ((pID = fork()) < 0)
+		{
+			cout << "fork() error" << endl;
+		}
+		else if (pID == 0)
+		{
+			// In the child process
+			execv(argv[0], argv);
+
+			// If we get to this point, something went wrong
+			exit(EXIT_FAILURE);
+		}
+	} // end for
+
+	// Restore in / out defaults
+	dup2(tmpin, 0);
+	dup2(tmpout, 1);
+	close(tmpin);
+	close(tmpout);
+
+	// Wait for all the child processes created for the separate
+	// pipelined commands to finish
+	waitpid(pID, NULL, 0);
+}
+
+/*
+ * Name :        MyShellProcess::ExecuteIOCommands()
+ * Description : execute a command that only has I/O redirection
+ * Parameters :  a pointer to MyShellParser for retrieving the
+ * 				 pre-processed commands
+ * Returns :     void
+ */
+void MyShellProcess::ExecuteIOCommands(MyShellParser* parser)
+{
+	cout << "MyShellProcess::ExecuteIOCommands()" << endl;
+}
+
+/*
+ * Name :        MyShellProcess::ExecuteCombinedCommands()
+ * Description : execute a command that has both pipes and I/O redirection
+ * Parameters :  a pointer to MyShellParser for retrieving the
+ * 				 pre-processed commands
+ * Returns :     void
+ */
+void MyShellProcess::ExecuteCombinedCommands(MyShellParser* parser)
+{
+	cout << "MyShellProcess::ExecuteCombinedCommands()" << endl;
 }

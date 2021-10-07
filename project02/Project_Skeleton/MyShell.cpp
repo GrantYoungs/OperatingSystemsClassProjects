@@ -40,7 +40,7 @@ MyShell::MyShell()
 
 	// set history counter to 1 (since the first command line stored
 	// in the history vector will start with the sequence number equal to 1
-	mHistoryCounter = 1;
+	// mHistoryCounter = 1;
 }
 
 /*
@@ -65,10 +65,12 @@ void MyShell::ExecuteCShellCommand(CShellParser *u)
 	// retrieve the args for executing
 	char** myArgs = u->GetArguments();
 
-	//
-	// to do (replace the following line with your own code)
-	//
-	cout<<"Please implement  MyShell::ExecuteCShellCommand()"<<endl;
+	// Execute the argments
+	execv(myArgs[0], myArgs);
+
+	// If execv returns, then it failed
+	cout << "execv failed with error " << errno << endl;
+	cout << "There is an error" << endl;
 }
 
 /*
@@ -94,7 +96,7 @@ void MyShell::Prompt()
 		// to do (replace the following line with your own code)
 		//
 		UpdateHistory(currentCMD);
-
+		mSequenceNumber++;
 
 
 		// end of to do
@@ -133,10 +135,7 @@ void MyShell::Prompt()
  */
 void MyShell::PrintPromptInfo()
 {
-	//
-	// to do (replace the following line with your own code)
-	//
-	cout << "<" << mSequenceNumber << " " << GetHostName() << ":" << GetUserName() << ">";
+	cout << "<" << mSequenceNumber << " " << mHostName << ":" << mUserName << ">";
 }
 
 /*
@@ -148,15 +147,19 @@ void MyShell::PrintPromptInfo()
  */
 void MyShell::PrintHistory()
 {
-	//
-	// to do (replace the following line with your own code)
-	//
+	/*
 	int i = mHistory.size();
 	for (const auto & hist : mHistory)
 	{
 		int index = mHistoryCounter - i;
 		cout << index << " " << hist << endl;
 		i--;
+	}
+	*/
+
+	for (const auto & hist : mHistory)
+	{
+		cout << hist.first << " " << hist.second << endl;
 	}
 }
 
@@ -169,9 +172,17 @@ void MyShell::PrintHistory()
  */
 void MyShell::UpdateHistory(const std::string & h)
 {
-	//
-	// to do (replace the following line with your own code)
-	//
+	if (mHistory.size() >= HistorySize)
+	{
+		mHistory.pop_front();
+	}
+
+	if (h != "")
+	{
+		mHistory.push_back(pair<int, string>(mSequenceNumber, h));
+	}
+
+	/*
 	if (mHistory.size() >= HistorySize)
 	{
 		mHistory.pop_front();
@@ -180,6 +191,7 @@ void MyShell::UpdateHistory(const std::string & h)
 	mHistory.push_back(h);
 	mSequenceNumber++;
 	mHistoryCounter++;
+	*/
 }
 
 /*
@@ -251,15 +263,27 @@ void MyShell::ExecuteExternalCommand(MyShellParser *parser)
  */
 std::string MyShell::GetUserName()
 {
-	struct passwd *pwd = getpwuid(getuid());
-	if (pwd)
+	string userName = "unknown";
+
+	// Attempt to grab the username from the environment variables
+	char * _userName = getenv("USER");
+
+	// If it fails to grab from the environment variable,
+	// attempt to grab it based on the process userId
+	if (!_userName)
 	{
-		return string(pwd->pw_name);
+		struct passwd *pwd = getpwuid(getuid());
+		if (pwd)
+		{
+			userName = string(pwd->pw_name);
+		}
 	}
 	else
 	{
-		return "unknown";
+		userName = string(_userName);
 	}
+
+	return userName;
 }
 
 /*
@@ -271,12 +295,9 @@ std::string MyShell::GetUserName()
  */
 std::string MyShell::GetHostName()
 {
-	//
-	// to do (replace the following line with your own code)
-	//
-	char host_name[HOST_NAME_MAX];
-	gethostname(host_name, HOST_NAME_MAX);
-	return string(host_name);
+	char _host_name[HOST_NAME_MAX];
+	gethostname(_host_name, HOST_NAME_MAX);
+	return string(_host_name);
 }
 
 /*
@@ -288,10 +309,13 @@ std::string MyShell::GetHostName()
  */
 std::string MyShell::GetTime()
 {
-	//
-	// to do (replace the following line with your own code)
-	//
-	return "MyShell::GetTime()";
+	// Get the current date and time
+	time_t now = time(0);
+
+	// Convert it to a string form
+	string dateTime = string(ctime(&now));
+
+	return dateTime;
 }
 
 /*
@@ -306,7 +330,17 @@ std::string MyShell::GetCurrentDirectory()
 	//
 	// to do (replace the following line with your own code)
 	//
-	return "MyShell::GetCurrentDirectory()";
+	char cwd[PATH_MAX];
+	if (getcwd(cwd, sizeof(cwd)) != NULL)
+	{
+		return string(cwd);
+	}
+	else
+	{
+		return "curr error";
+	}
+
+	// return "MyShell::GetCurrentDirectory()";
 }
 
 /*
@@ -319,10 +353,11 @@ std::string MyShell::GetCurrentDirectory()
  */
 void MyShell::ChangeCurrentDirectory(const char* dir)
 {
-	//
-	// to do (replace the following line with your own code)
-	//
-	cout<<"You have to implement MyShell::ChangeCurrentDirectory()"<<endl;
+	// Change directory, and print an error if it failed
+	if (chdir(dir) != 0)
+	{
+		cout << "cd " << dir << " failed with " << errno << endl;
+	}
 }
 
 /*
