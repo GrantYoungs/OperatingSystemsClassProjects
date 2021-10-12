@@ -13,6 +13,8 @@
 #ifndef MYSHELLPROCESS_H_
 #define MYSHELLPROCESS_H_
 
+#include <string>
+
 // forward reference
 class MyShell;
 class MyShellParser;
@@ -43,6 +45,9 @@ private:
 	void ExecutePipelinedCommands(MyShellParser* parser);
 	void ExecuteIOCommands(MyShellParser* parser);
 	void ExecuteCombinedCommands(MyShellParser* parser);
+
+	std::string GetSourceFile(MyShellParser* parser);
+	std::string GetDestinationFile(MyShellParser* parser);
 
 	// for cooperating with MyShell object
 	MyShell *mShell;

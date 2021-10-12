@@ -92,15 +92,8 @@ void MyShell::Prompt()
 		// read in user input
 		getline(cin, currentCMD);
 
-		//====================================================================
-		// to do (replace the following line with your own code)
-		//
 		UpdateHistory(currentCMD);
 		mSequenceNumber++;
-
-
-		// end of to do
-		//====================================================================
 
 		// use the parser for analyzing
 		// the user input from the command line
@@ -147,16 +140,6 @@ void MyShell::PrintPromptInfo()
  */
 void MyShell::PrintHistory()
 {
-	/*
-	int i = mHistory.size();
-	for (const auto & hist : mHistory)
-	{
-		int index = mHistoryCounter - i;
-		cout << index << " " << hist << endl;
-		i--;
-	}
-	*/
-
 	for (const auto & hist : mHistory)
 	{
 		cout << hist.first << " " << hist.second << endl;
@@ -177,21 +160,11 @@ void MyShell::UpdateHistory(const std::string & h)
 		mHistory.pop_front();
 	}
 
+	// Only store non-null commands
 	if (h != "")
 	{
 		mHistory.push_back(pair<int, string>(mSequenceNumber, h));
 	}
-
-	/*
-	if (mHistory.size() >= HistorySize)
-	{
-		mHistory.pop_front();
-	}
-
-	mHistory.push_back(h);
-	mSequenceNumber++;
-	mHistoryCounter++;
-	*/
 }
 
 /*
@@ -327,9 +300,6 @@ std::string MyShell::GetTime()
  */
 std::string MyShell::GetCurrentDirectory()
 {
-	//
-	// to do (replace the following line with your own code)
-	//
 	char cwd[PATH_MAX];
 	if (getcwd(cwd, sizeof(cwd)) != NULL)
 	{
@@ -339,8 +309,6 @@ std::string MyShell::GetCurrentDirectory()
 	{
 		return "curr error";
 	}
-
-	// return "MyShell::GetCurrentDirectory()";
 }
 
 /*

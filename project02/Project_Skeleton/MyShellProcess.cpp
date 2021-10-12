@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <fcntl.h>
 using namespace std;
 
 /*
@@ -136,42 +137,11 @@ void MyShellProcess::ExecuteExternalCommand(MyShellParser *parser)
  */
 void MyShellProcess::ExecuteInBackground(MyShellParser *parser)
 {
-	//
-	// to do (replace the following line with your own code)
-	//
-	// cout << "Please implement MyShellProcess::ExecuteInBackground()" << endl;
-
-	/*
-	int delimiterCount = parser->GetDelimiterCount();
-
-	// No delimiters means only one command needs to be executed.
-	if (delimiterCount == 0)
-	{
-		pid_t pID;
-		char** argv = parser->GetArguments(0);
-
-		switch (pID = fork())
-		{
-			case -1:
-				cout << "fork() error" << endl;
-				break;
-			case 0:
-				// Child process
-				execv(argv[0], argv);
-				break;
-			default:
-				// Do not wait for the child process to finish, as that is supposed
-				// to run in the background.
-				break;
-		}
-	}
-	*/
-
 	pid_t pID;
 
 	if ((pID = fork()) < 0)
 	{
-		cout << "for() error" << endl;
+		cout << "fork() error" << endl;
 	}
 	else if (pID == 0)
 	{
@@ -255,19 +225,6 @@ void MyShellProcess::Execute(MyShellParser *parser)
 	// Otherwise, we're going to have to work with some delimiters.
 	else
 	{
-		/*
-		for (int i = 0; i < parser->GetCommandCount(); i++)
-		{
-			char ** argv = parser->GetArguments(i);
-
-			cout << "Command index " << i << " ";
-			for (char * arg = *argv; arg; arg = *++argv)
-			{
-				cout << arg << " ";
-			}
-			cout << endl;
-		}
-		*/
 
 		// First thing we need to do is determine if the command list is only pipelined,
 		// only I/O, or a combination of both.
@@ -314,10 +271,11 @@ void MyShellProcess::Execute(MyShellParser *parser)
  */
 void MyShellProcess::ExecutePipelinedCommands(MyShellParser* parser)
 {
-	int tmpin = dup(0);
-	int tmpout = dup(1);
+	// Save in / out
+	int default_in = dup(STDIN_FILENO);
+	int default_out = dup(STDOUT_FILENO);
 
-	int fdin = dup(tmpin);
+	int fdin = dup(default_in);
 
 	pid_t pID;
 	int fdout;
@@ -334,19 +292,19 @@ void MyShellProcess::ExecutePipelinedCommands(MyShellParser* parser)
 		if (i == parser->GetCommandCount() - 1)
 		{
 			// Use the default output
-			fdout = dup(tmpout);
+			fdout = dup(default_out);
 		}
 		else
 		{
 			// Not the last command, keep piping
 			int fdpipe[2];
 			pipe(fdpipe);
-			fdout = fdpipe[1];
-			fdin = fdpipe[0];
+			fdout = fdpipe[STDOUT_FILENO];
+			fdin = fdpipe[STDIN_FILENO];
 		}
 
 		// Redirect output
-		dup2(fdout, 1);
+		dup2(fdout, STDOUT_FILENO);
 		close(fdout);
 
 		// Create the child process
@@ -365,10 +323,10 @@ void MyShellProcess::ExecutePipelinedCommands(MyShellParser* parser)
 	} // end for
 
 	// Restore in / out defaults
-	dup2(tmpin, 0);
-	dup2(tmpout, 1);
-	close(tmpin);
-	close(tmpout);
+	dup2(default_in, STDIN_FILENO);
+	dup2(default_out, STDOUT_FILENO);
+	close(default_in);
+	close(default_out);
 
 	// Wait for all the child processes created for the separate
 	// pipelined commands to finish
@@ -384,7 +342,47 @@ void MyShellProcess::ExecutePipelinedCommands(MyShellParser* parser)
  */
 void MyShellProcess::ExecuteIOCommands(MyShellParser* parser)
 {
-	cout << "MyShellProcess::ExecuteIOCommands()" << endl;
+	// For this, we need to determine the input source and the output destination.
+	// The input source will be provided by the command set immediately following a <.
+	// The output destination will be provided by the command immediately following a >.
+
+	string source = GetSourceFile(parser);
+	string destination = GetDestinationFile(parser);
+
+	int inputfd;
+	if (source != "")
+	{
+		// If it fails to open the input file
+		if ((inputfd = open(source.c_str(), O_RDONLY | O_CREAT)) < 0)
+		{
+			cout << "Error: " << errno << endl;
+		}
+		else
+		{
+			// Otherwise, copy the inputfd over to STDIN,
+			// then close inputfd to free space.
+			dup2(inputfd, STDIN_FILENO);
+			close(inputfd);
+		}
+	}
+
+	int outputfd;
+	if (destination != "")
+	{
+		if ((outputfd = open(destination.c_str(), O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO)) < 0)
+		{
+			cout << "Error: " << errno << endl;
+		}
+		else
+		{
+			dup2(outputfd, STDOUT_FILENO);
+			close(outputfd);
+		}
+	}
+
+	char ** argv = parser->GetArguments(0);
+	execv(argv[0], argv);
+	exit(EXIT_FAILURE);
 }
 
 /*
@@ -396,5 +394,53 @@ void MyShellProcess::ExecuteIOCommands(MyShellParser* parser)
  */
 void MyShellProcess::ExecuteCombinedCommands(MyShellParser* parser)
 {
-	cout << "MyShellProcess::ExecuteCombinedCommands()" << endl;
+	cout << "Combined I/O and Piped commands for extra credit have not yet been implemented." << endl;
+}
+
+/*
+ * Name:			MyShellProcess::GetSourceFile()
+ * Description:		Returns the name of a source file input provided in a
+ * 					MyShellParser object arguments list.
+ * Parameters:		A pointer to MyShellParser for retrieving the
+ * 					source file input.
+ * Returns:			The source file input, or an empty string.
+ */
+std::string MyShellProcess::GetSourceFile(MyShellParser* parser)
+{
+	string source = "";
+	for (int i = 0; i < parser->GetDelimiterCount(); i++)
+	{
+		string delim = parser->GetDelimiter(i);
+		if (delim == MyShellParser::RedirStdin)
+		{
+			// < is input
+			source = parser->GetCommand(i + 1);
+			break;
+		}
+	}
+	return source;
+}
+
+/*
+ * Name:			MyShellProcess::GetDestinationFile()
+ * Description:		Returns the name of a destination file output provided in a
+ * 					MyShellParser object arguments list.
+ * Parameters:		A pointer to MyShellParser for retrieving the
+ * 					destination file output.
+ * Returns:			The destination file output, or an empty string.
+ */
+std::string MyShellProcess::GetDestinationFile(MyShellParser* parser)
+{
+	string destination = "";
+	for (int i = 0; i < parser->GetDelimiterCount(); i++)
+	{
+		string delim = parser->GetDelimiter(i);
+		if (delim == MyShellParser::RedirStdout)
+		{
+			// > is output
+			destination = parser->GetCommand(i + 1);
+			break;
+		}
+	}
+	return destination;
 }

@@ -78,6 +78,8 @@ private:
 	bool mIsQuit;
 
 	// storing the command line history
+	// NOTE: Changed from list<string>, as this makes it easier
+	// for me to pair the command with the sequence number it was enterd in.
 	std::list<std::pair<int, std::string>> mHistory;
 
 	// the sequence number for commands stored in the history
