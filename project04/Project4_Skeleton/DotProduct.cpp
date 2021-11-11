@@ -58,6 +58,10 @@ DotProduct::~DotProduct()
 		// clean the object created by "new"
 		delete mProduct;
 
+		/* NOTE
+			Grant -- mMutex1, mEmpty, and mNotEmpy destroyed at the end of DotProduct::GenerateValues()
+		*/
+
 		if(mMode == MT)
 		{
 			// do not forget to destroy mutex
@@ -65,6 +69,9 @@ DotProduct::~DotProduct()
 			// and also delete any other objects
 			// allocated with "new" if any
 
+			/* NOTE
+				Grant -- mMutex2 destroyed at the end of DotProduct::MultiThreadDot()
+			*/
 		}
 	}
 	else
@@ -95,7 +102,6 @@ void DotProduct::Start()
 		{
 		case Normal:
 			NormalDot();
-			// cout << "Uncomment NormalDot" << endl;
 			break;
 		case MP:
 			MultiProcessDot();
@@ -235,8 +241,8 @@ void DotProduct::GenerateValues(const char *n)
 	}
 
 	// Create the consumer threads. Should be one consumer thread per number of vectors (by default, 2)
-	pthread_t consumer_threads[VectorNumber];
-	for (int i = 0; i < VectorNumber; i++)
+	pthread_t consumer_threads[NumberOfThread];
+	for (int i = 0; i < NumberOfThread; i++)
 	{
 		ThreadInfo* threadInfo = new ThreadInfo();
 		threadInfo->obj = this;
@@ -256,7 +262,7 @@ void DotProduct::GenerateValues(const char *n)
 		cerr << "pthread join failed for producer thread" << endl;
 	}
 
-	for (int i = 0; i < VectorNumber; i++)
+	for (int i = 0; i < NumberOfThread; i++)
 	{
 		int consumer_join = pthread_join(consumer_threads[i], NULL);
 		if (consumer_join != 0)
@@ -297,6 +303,10 @@ void *DotProduct::ConsumerEntry(void* arg)
 {
 	ThreadInfo* info = (ThreadInfo*)arg;
 	(info->obj)->Consumer(info->Index);
+
+	// Clean up info after Consumer() is ran
+	delete info;
+
 	return NULL;
 }
 
@@ -469,6 +479,61 @@ void DotProduct::MultiThreadDot()
 	// and, then, do dot product operation
 	// at the end, don't forget to use pthread_join()
 	// for waiting for the termination of all threads created
+	pthread_mutex_init(&mMutex2, NULL);
+
+	int chunk = (mNumberOfValuesPerVector / NumberOfThread); // 5 items => 2
+	int nextStartIndex = 0;
+
+	pthread_t thread_entries[NumberOfThread];
+	for (int i = 0; i < NumberOfThread; i++)
+	{
+		ThreadInfo* threadInfo = new ThreadInfo();
+		threadInfo->obj = this;
+		threadInfo->Index = i; // Probably won't even be used
+
+		
+		threadInfo->StartIndex = nextStartIndex;	// Starting index of the section of the vectors this thread will be processing
+
+		// Time to figure out the end index
+		// This section is used to evenly split the responsibilities of the threads, so that each thread
+		// works through roughly the same length in the vector.
+		if (i == NumberOfThread - 1)
+		{
+			threadInfo->EndIndex = mNumberOfValuesPerVector - 1; // End index will be the last element of the vector
+		}
+		else
+		{
+			// If the vectors have an even amount of numbers
+			if (mNumberOfValuesPerVector % 2 == 0)
+			{
+				threadInfo->EndIndex = threadInfo->StartIndex + chunk - 1;
+			}
+			else
+			{
+				threadInfo->EndIndex = threadInfo->StartIndex + chunk;
+			}
+		}
+
+		nextStartIndex = threadInfo->EndIndex + 1;
+
+		int thread_entry_create = pthread_create(&thread_entries[i], NULL, ThreadEntry, (void *) threadInfo);
+		if (thread_entry_create != 0)
+		{
+			cerr << "pthread create failed for ThreadDotOperation thread" << endl;
+		}
+	}
+
+	for (int i = 0; i < NumberOfThread; i++)
+	{
+		int thread_entry_join = pthread_join(thread_entries[i], NULL);
+		if (thread_entry_join != 0)
+		{
+			cerr << "pthread join failed for ThreadDotOperation thread" << endl;
+		}
+	}
+
+	// Cleanup
+	pthread_mutex_destroy(&mMutex2);
 }
 
 
@@ -482,8 +547,11 @@ void DotProduct::MultiThreadDot()
  */
 void *DotProduct::ThreadEntry(void *arg)
 {
-	// invoke the ThreadDotOperation() here
-	return NULL; // Delete later
+	ThreadInfo* info = (ThreadInfo*)arg;
+	(info->obj)->ThreadDotOperation(info->StartIndex, info->EndIndex);
+
+	delete info;
+	return NULL;
 }
 
 
@@ -502,6 +570,34 @@ void DotProduct::ThreadDotOperation(unsigned int startIndex, unsigned int endInd
 	// protect the critical section
 	// by using pthread_mutex_lock() and pthread_mutex_unlock()
 	// at the end of the function, use pthread_exit() to terminate the thread
+	// Iterate through all the values across the vectors in mVectors
+	
+	/*
+	pthread_mutex_lock(&mMutex2);
+	cout << "Thread " << pthread_self();
+	cout << "StartIndex: " << startIndex << ",   EndIndex: " << endIndex << endl;
+	pthread_mutex_unlock(&mMutex2);
+	*/
+
+	
+	for (int i = startIndex; i <= endIndex; i++)
+	{
+		int sum = 1;
+
+		// Iterate through each vector in mVectors,
+		// and multiply sum by the i-th element in that vector.
+		for (const auto & vec : mVectors)
+		{
+			sum *= vec.at(i);
+		}
+
+		// Add that sum to the total mProduct
+		pthread_mutex_lock(&mMutex2);
+		*mProduct += sum;
+		pthread_mutex_unlock(&mMutex2);
+	}
+
+	pthread_exit(NULL);
 }
 
 /*
