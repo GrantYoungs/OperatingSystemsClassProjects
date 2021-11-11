@@ -20,6 +20,8 @@
 #include <cstdlib>
 #include <cstdio>
 #include <ctime>
+#include <random>
+#include <pthread.h>
 using namespace std;
 
 // constant values
@@ -93,6 +95,7 @@ void DotProduct::Start()
 		{
 		case Normal:
 			NormalDot();
+			// cout << "Uncomment NormalDot" << endl;
 			break;
 		case MP:
 			MultiProcessDot();
@@ -118,7 +121,7 @@ void DotProduct::Start()
 void DotProduct::Initialize(const int argc, const char** argv)
 {
 	// a vector of vectors for storing the values read in from the file
-	// currently, there are two vectors: mVectors[0] and mVectprs[1]
+	// currently, there are two vectors: mVectors[0] and mVectors[1]
 	for(unsigned int i = 0; i< VectorNumber; i++)
 	{
 		mVectors.push_back( vector<int>() );
@@ -216,13 +219,56 @@ void DotProduct::GenerateValues(const char *n)
 
 	// initialize mutex and conditional variables
 	// by pthread_cond_init() and pthread_mutex_init()
+	// initialize mutex and conditional variables: 
+	pthread_mutex_init(&mMutex1, NULL);
+	pthread_cond_init(&mNotEmpty, NULL);
+	pthread_cond_init(&mEmpty, NULL);
 
 	// we will have one producer and two consumers
 	// create new threads by pthread_create()
 
+	pthread_t producer_thread;
+	int create = pthread_create(&producer_thread, NULL, ProducerEntry, (void *)this);
+	if (create != 0)
+	{
+		cerr << "pthread create failed for producer thread" << endl;
+	}
+
+	// Create the consumer threads. Should be one consumer thread per number of vectors (by default, 2)
+	pthread_t consumer_threads[VectorNumber];
+	for (int i = 0; i < VectorNumber; i++)
+	{
+		ThreadInfo* threadInfo = new ThreadInfo();
+		threadInfo->obj = this;
+		threadInfo->Index = i; // Index in this case will refer to which vector in mVectors the thread will be adding values to.
+
+		int consumer_create = pthread_create(&consumer_threads[i], NULL, ConsumerEntry, (void *) threadInfo);
+		if (consumer_create != 0)
+		{
+			cerr << "pthread create failed for consumer thread" << endl;
+		}
+	}
+
 	// join all threads by pthread_join()
+	int join = pthread_join(producer_thread, NULL);
+	if (join != 0)
+	{
+		cerr << "pthread join failed for producer thread" << endl;
+	}
+
+	for (int i = 0; i < VectorNumber; i++)
+	{
+		int consumer_join = pthread_join(consumer_threads[i], NULL);
+		if (consumer_join != 0)
+		{
+			cerr << "pthread join failed for consumer thread" << endl;
+		}
+	}
 
 	// destroy mutex and conditional variables
+	pthread_mutex_destroy(&mMutex1);
+	pthread_cond_destroy(&mNotEmpty);
+	pthread_cond_destroy(&mEmpty);
 }
 
 /*
@@ -268,6 +314,34 @@ void DotProduct::Producer()
 	// pthread_cond_wait(), pthread_cond_signal()
 	// on mutex (mMutex1) and conditional variables (mNotEmpty,mEmpty)
 	// at the end, you would need pthread_exit()
+
+	std::random_device rd; // obtain a random number from hardware
+    std::mt19937 gen(rd()); // seed the generator
+    std::uniform_int_distribution<> distr(0, BASE); // define the range
+
+	for (int i = 0; i < mTotalNumberOfValues; i++)
+	{
+		// Get a lock on the mutex
+		pthread_mutex_lock(&mMutex1);
+
+		// While mGeneratedNumber vector still has numbers to be consumed,
+		// wait for the consumer threads to signal that it is empty.
+		while (mGeneratedNumber.size() != 0)
+		{
+			pthread_cond_wait(&mEmpty, &mMutex1);
+		}
+
+		/* CRITICAL SECTION */
+		mGeneratedNumber.push_back(distr(gen));
+		/* END CRITICAL SECTION */
+
+		// Signal that mGeneratedNumber vector is not empty and has numbers to be consumed.
+		// Then, release the lock on the mutex.
+		pthread_cond_signal(&mNotEmpty);
+		pthread_mutex_unlock(&mMutex1);
+	}
+
+	pthread_exit(NULL);
 }
 
 /*
@@ -284,6 +358,31 @@ void DotProduct::Consumer(const unsigned int index)
 	// pthread_cond_wait(), pthread_cond_signal()
 	// on mutex (mMutex1) and conditional variables (mNotEmpty,mEmpty)
 	// at the end, you would need pthread_exit()
+
+	for (int i = 0; i < mNumberOfValuesPerVector; i++)
+	{
+		pthread_mutex_lock(&mMutex1);
+
+		while (mGeneratedNumber.size() == 0)
+		{
+			pthread_cond_wait(&mNotEmpty, &mMutex1);
+		}
+		
+		/* CRITICAL SECTION */
+		int num = mGeneratedNumber.at(mGeneratedNumber.size() - 1); // Grab the last number
+		mGeneratedNumber.pop_back(); // Remove the last number
+		mVectors.at(index).push_back(num);
+		/* END CRITICAL SECTION */
+
+		if (mGeneratedNumber.size() == 0)
+		{
+			pthread_cond_signal(&mEmpty);
+		}
+
+		pthread_mutex_unlock(&mMutex1);
+	}
+
+	pthread_exit(NULL);
 }
 
 /*
@@ -295,7 +394,21 @@ void DotProduct::Consumer(const unsigned int index)
  */
 void DotProduct::NormalDot()
 {
+	// Iterate through all the values across the vectors in mVectors
+	for (int i = 0; i < mNumberOfValuesPerVector; i++)
+	{
+		int sum = 1;
 
+		// Iterate through each vector in mVectors,
+		// and multiply sum by the i-th element in that vector.
+		for (const auto & vec : mVectors)
+		{
+			sum *= vec.at(i);
+		}
+
+		// Add that sum to the total mProduct
+		*mProduct += sum;
+	}
 }
 
 /*
@@ -370,6 +483,7 @@ void DotProduct::MultiThreadDot()
 void *DotProduct::ThreadEntry(void *arg)
 {
 	// invoke the ThreadDotOperation() here
+	return NULL; // Delete later
 }
 
 
@@ -399,4 +513,42 @@ void DotProduct::ThreadDotOperation(unsigned int startIndex, unsigned int endInd
  */
 void DotProduct::Print()
 {
+	int vectorNumber = 1;
+	for (const auto & vec : mVectors)
+	{
+		cout << "Vector " << vectorNumber << "\t: ";
+		PrintVector(vec);
+		cout << endl;
+
+		vectorNumber++;
+	}
+
+	// Print the dot product result
+	cout << "Dot Product = " << *mProduct << endl;
+}
+
+/*
+ * Name :        DotProduct::PrintVector()
+ * Description : Print the contents of vector in a neat format
+ * Parameters :  vector<int> vec -- the vector to print
+ * Returns :     void
+ */
+void DotProduct::PrintVector(const vector<int> &vec)
+{
+	cout << "[";
+
+	for (int i = 0; i < vec.size(); i++)
+	{
+		cout << vec.at(i);
+
+		// If it's the last element, add the closing bracket
+		if (i == vec.size() - 1)
+		{
+			cout << "]";
+		}
+		else
+		{
+			cout << ", ";
+		}
+	}
 }

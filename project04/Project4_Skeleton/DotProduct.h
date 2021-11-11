@@ -80,6 +80,11 @@ private:
 	// this is where each thread does "dot product"
 	void ThreadDotOperation(unsigned int startIndex, unsigned int endIndex);
 
+	/*
+	 * Print a vector in a neat format.
+	 */
+	void PrintVector(const std::vector<int> &vec);
+
 	// operation mode
 	Mode mMode;
 
