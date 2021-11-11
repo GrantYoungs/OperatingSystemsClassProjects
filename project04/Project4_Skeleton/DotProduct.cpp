@@ -22,6 +22,7 @@
 #include <ctime>
 #include <random>
 #include <pthread.h>
+#include <unistd.h>
 using namespace std;
 
 // constant values
@@ -79,10 +80,16 @@ DotProduct::~DotProduct()
 		// to deallocate shared memory:
 		// first detach the shared memory by shmdt()
 		// remove shared memory by shmctl()
+		shmdt(mProduct);
+		shmctl(mShmProductId, IPC_RMID, NULL);
+		delete mProduct;
 
 		// to deallocate a semaphore allocated with a shared memory,
 		// first destroy the semaphore by sem_destroy()
 		// the follow the above steps.
+		sem_destroy(mSem);
+		shmdt(mSem);
+		shmctl(mShmSemId, IPC_RMID, NULL);
 
 		// also do not forget to delete any other
 		// objects allocated with "new", if any
@@ -435,6 +442,20 @@ void DotProduct::MultiProcessInitialize()
 	// for sharing it between processes and protecting the critical section
 	// also, you have to initialize the semaphore after allocating shared memory
 	// functions needed here: shmget(), shmat(), sem_init()
+
+	// Assign IDs for the shared memory for the product and the semaphore
+	mShmProductId = shmget(IPC_PRIVATE, sizeof(unsigned int) * 1, IPC_CREAT | SHM_R | SHM_W);
+	mShmSemId = shmget(IPC_PRIVATE, sizeof(unsigned int) * 1, IPC_CREAT | SHM_R | SHM_W);
+
+	// Attach mProduct and mSem to shared memory using the unique keys
+	mProduct = static_cast<int *>(shmat(mShmProductId, 0, 0));
+	mSem = static_cast<sem_t *>(shmat(mShmSemId, 0, 0));
+
+	// Now that mProduct is in shared memory, we can initialize it
+	mProduct = new int(0);
+
+	// Initialize the semaphore mSem
+	int sem_init_ret = sem_init(mSem, 1, 1);
 }
 
 /*
@@ -446,7 +467,27 @@ void DotProduct::MultiProcessInitialize()
  */
 void DotProduct::MultiProcessDot()
 {
+	int mid = mNumberOfValuesPerVector / NumberOfProcess;
 
+	pid_t pID = fork();
+	if (pID < 0)
+	{
+		cout << "DotProduct::MultiProcessDot fork() error" << endl;
+	}
+	else if (pID == 0)
+	{
+		// Child process
+		ProcessDotOperation(0, mid - 1);
+		// exit(EXIT_FAILURE); // Should not reach this point unless things fail
+	}
+	else
+	{
+		// Parent process
+		ProcessDotOperation(mid, mNumberOfValuesPerVector - 1);
+		// exit(EXIT_FAILURE); // Again, should not reach this point.
+	}
+
+	waitpid(pID, NULL, 0);
 }
 
 /*
@@ -463,6 +504,25 @@ void DotProduct::ProcessDotOperation(unsigned int startIndex, unsigned int endIn
 	// make sure that you use semaphore to
 	// protect the critical section
 	// by using sem_wait() & sem_post()
+
+	for (int i = startIndex; i <= endIndex; i++)
+	{
+		int sum = 1;
+
+		for (const auto & vec : mVectors)
+		{
+			sum *= vec.at(i);
+		}
+
+		// Add that sum to the total mProduct
+		sem_wait(mSem);
+
+		/* CRITICAL SECTION */
+		*mProduct += sum;
+		/* END CRITICAL SECTION */
+
+		sem_post(mSem);
+	}
 }
 
 /*
