@@ -43,7 +43,6 @@ DotProduct::DotProduct()
 	mProduct = NULL;
 	mShmSemId = 0;
 	mSem = NULL;
-	mThreadInfos = NULL;
 }
 
 
@@ -231,15 +230,12 @@ void DotProduct::GenerateValues(const char *n)
 	mTotalNumberOfValues = mNumberOfValuesPerVector*2;
 
 	// initialize mutex and conditional variables
-	// by pthread_cond_init() and pthread_mutex_init()
-	// initialize mutex and conditional variables: 
 	pthread_mutex_init(&mMutex1, NULL);
 	pthread_cond_init(&mNotEmpty, NULL);
 	pthread_cond_init(&mEmpty, NULL);
 
 	// we will have one producer and two consumers
 	// create new threads by pthread_create()
-
 	pthread_t producer_thread;
 	int create = pthread_create(&producer_thread, NULL, ProducerEntry, (void *)this);
 	if (create != 0)
@@ -251,7 +247,7 @@ void DotProduct::GenerateValues(const char *n)
 	pthread_t consumer_threads[NumberOfThread];
 	for (int i = 0; i < NumberOfThread; i++)
 	{
-		ThreadInfo* threadInfo = new ThreadInfo();
+		ThreadInfo* threadInfo = new ThreadInfo(); // Will be deleted at the end of ConsumerEntry()
 		threadInfo->obj = this;
 		threadInfo->Index = i; // Index in this case will refer to which vector in mVectors the thread will be adding values to.
 
@@ -326,12 +322,6 @@ void *DotProduct::ConsumerEntry(void* arg)
  */
 void DotProduct::Producer()
 {
-	// you have to use:
-	// pthread_mutex_lock(), pthread_mutex_unlock()
-	// pthread_cond_wait(), pthread_cond_signal()
-	// on mutex (mMutex1) and conditional variables (mNotEmpty,mEmpty)
-	// at the end, you would need pthread_exit()
-
 	std::random_device rd; // obtain a random number from hardware
     std::mt19937 gen(rd()); // seed the generator
     std::uniform_int_distribution<> distr(0, BASE); // define the range
@@ -370,12 +360,6 @@ void DotProduct::Producer()
  */
 void DotProduct::Consumer(const unsigned int index)
 {
-	// you have to use:
-	// pthread_mutex_lock(), pthread_mutex_unlock()
-	// pthread_cond_wait(), pthread_cond_signal()
-	// on mutex (mMutex1) and conditional variables (mNotEmpty,mEmpty)
-	// at the end, you would need pthread_exit()
-
 	for (int i = 0; i < mNumberOfValuesPerVector; i++)
 	{
 		pthread_mutex_lock(&mMutex1);
@@ -437,12 +421,6 @@ void DotProduct::NormalDot()
  */
 void DotProduct::MultiProcessInitialize()
 {
-
-	// you have to allocate a shared memory segment for mProduct and mSem
-	// for sharing it between processes and protecting the critical section
-	// also, you have to initialize the semaphore after allocating shared memory
-	// functions needed here: shmget(), shmat(), sem_init()
-
 	// Assign IDs for the shared memory for the product and the semaphore
 	mShmProductId = shmget(IPC_PRIVATE, sizeof(unsigned int) * 1, IPC_CREAT | SHM_R | SHM_W);
 	mShmSemId = shmget(IPC_PRIVATE, sizeof(unsigned int) * 1, IPC_CREAT | SHM_R | SHM_W);
@@ -478,15 +456,10 @@ void DotProduct::MultiProcessDot()
 	{
 		// Child process
 		ProcessDotOperation(0, mid - 1);
-		// exit(EXIT_FAILURE); // Should not reach this point unless things fail
 	}
-	else
-	{
-		// Parent process
-		ProcessDotOperation(mid, mNumberOfValuesPerVector - 1);
-		// exit(EXIT_FAILURE); // Again, should not reach this point.
-	}
-
+	
+	// Parent process. Complete the operation, then wait for the child process to finish.
+	ProcessDotOperation(mid, mNumberOfValuesPerVector - 1);
 	waitpid(pID, NULL, 0);
 }
 
@@ -499,12 +472,6 @@ void DotProduct::MultiProcessDot()
  */
 void DotProduct::ProcessDotOperation(unsigned int startIndex, unsigned int endIndex)
 {
-	// do dot product operation and
-	// store the result to mProduct
-	// make sure that you use semaphore to
-	// protect the critical section
-	// by using sem_wait() & sem_post()
-
 	for (int i = startIndex; i <= endIndex; i++)
 	{
 		int sum = 1;
@@ -534,11 +501,6 @@ void DotProduct::ProcessDotOperation(unsigned int startIndex, unsigned int endIn
  */
 void DotProduct::MultiThreadDot()
 {
-	// first, initialize the mutex with pthread_mutex_init()
-	// use pthread_create() to create threads
-	// and, then, do dot product operation
-	// at the end, don't forget to use pthread_join()
-	// for waiting for the termination of all threads created
 	pthread_mutex_init(&mMutex2, NULL);
 
 	int chunk = (mNumberOfValuesPerVector / NumberOfThread); // 5 items => 2
@@ -576,6 +538,7 @@ void DotProduct::MultiThreadDot()
 
 		nextStartIndex = threadInfo->EndIndex + 1;
 
+		// Create threads after initializing the ThreadInfo objects
 		int thread_entry_create = pthread_create(&thread_entries[i], NULL, ThreadEntry, (void *) threadInfo);
 		if (thread_entry_create != 0)
 		{
@@ -583,6 +546,7 @@ void DotProduct::MultiThreadDot()
 		}
 	}
 
+	// Join the threads now
 	for (int i = 0; i < NumberOfThread; i++)
 	{
 		int thread_entry_join = pthread_join(thread_entries[i], NULL);
@@ -610,7 +574,9 @@ void *DotProduct::ThreadEntry(void *arg)
 	ThreadInfo* info = (ThreadInfo*)arg;
 	(info->obj)->ThreadDotOperation(info->StartIndex, info->EndIndex);
 
+	// delete the info object that was generated in the function that called this
 	delete info;
+
 	return NULL;
 }
 
@@ -624,22 +590,6 @@ void *DotProduct::ThreadEntry(void *arg)
  */
 void DotProduct::ThreadDotOperation(unsigned int startIndex, unsigned int endIndex)
 {
-	// do dot product operation and
-	// store the result to mProduct
-	// make sure that you use mutex to
-	// protect the critical section
-	// by using pthread_mutex_lock() and pthread_mutex_unlock()
-	// at the end of the function, use pthread_exit() to terminate the thread
-	// Iterate through all the values across the vectors in mVectors
-	
-	/*
-	pthread_mutex_lock(&mMutex2);
-	cout << "Thread " << pthread_self();
-	cout << "StartIndex: " << startIndex << ",   EndIndex: " << endIndex << endl;
-	pthread_mutex_unlock(&mMutex2);
-	*/
-
-	
 	for (int i = startIndex; i <= endIndex; i++)
 	{
 		int sum = 1;

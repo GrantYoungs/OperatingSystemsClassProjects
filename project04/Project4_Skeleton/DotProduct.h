@@ -106,7 +106,7 @@ private:
 	pthread_mutex_t mMutex1;
 
 	// this might be useful when dealing with threads
-	ThreadInfo* mThreadInfos;
+	// ThreadInfo* mThreadInfos;
 
 	// number of items stored in the vector
 	// normally, each vector will contain equal numbers of variables
